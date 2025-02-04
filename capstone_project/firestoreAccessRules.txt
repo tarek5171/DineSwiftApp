@@ -1,0 +1,411 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+  
+  match /user_accounts/{document=**} {
+  
+  allow read: if request.auth != null && (
+  // User can always read their own document if it exists and is not blocked
+  request.auth.uid == resource.data.uid &&
+  resource.data.isBlocked == false ||
+  
+  // Admins can read any user account
+  exists(/databases/$(database)/documents/admin_accounts/$(request.auth.uid))
+  && get(/databases/$(database)/documents/admin_accounts/$(request.auth.uid)).data.status == 'accepted'
+);
+  
+  // - Allow creating the document for new users (allow fields like uid, name, email, phoneNumber, createdAt)
+  allow create: if request.auth != null &&
+  request.resource.data.keys().hasOnly(['uid', 'name', 'email', 'phoneNumber', 'createdAt', 'isBlocked']) &&
+  request.resource.data.uid == request.auth.uid &&
+  request.resource.data.isBlocked == false && // Ensure new accounts are not blocked by default
+  request.resource.data.name is string &&
+  request.resource.data.email is string &&
+  request.resource.data.phoneNumber is string &&
+  request.resource.data.createdAt is timestamp;
+
+  allow write: if request.auth != null && (
+
+    // Admins can write to any document
+    exists(/databases/$(database)/documents/admin_accounts/$(request.auth.uid))
+    && get(/databases/$(database)/documents/admin_accounts/$(request.auth.uid)).data.status == 'accepted'
+  );
+  
+   allow update: if request.auth != null && (
+  
+    // Allow updating only specific fields in existing documents by the authenticated user
+    (request.auth.uid == resource.data.uid && request.auth.uid == resource.data.uid &&
+      !request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny(['uid', 'createdAt']))  &&  
+        get(/databases/$(database)/documents/user_accounts/$(request.auth.uid)).data.isBlocked == false
+        
+        ||
+
+    // Admins can write to any document
+    exists(/databases/$(database)/documents/admin_accounts/$(request.auth.uid))
+    && get(/databases/$(database)/documents/admin_accounts/$(request.auth.uid)).data.status == 'accepted'
+  );
+}
+
+    
+  match /restaurants_accounts/{document=**} {
+  // Allow authenticated users to read only the "status" field
+  allow get: if 
+  request.auth != null &&
+  exists(/databases/$(database)/documents/user_accounts/$(request.auth.uid)) &&
+  get(/databases/$(database)/documents/user_accounts/$(request.auth.uid)).data.isBlocked == false 
+  && resource.data.keys().hasOnly(['status']) ||
+  request.auth != null &&
+  exists(/databases/$(database)/documents/driver_accounts/$(request.auth.uid)) &&
+  get(/databases/$(database)/documents/driver_accounts/$(request.auth.uid)).data.status == 'accepted'
+  && resource.data.keys().hasOnly(['status']);
+  
+  allow list: if request.auth != null &&
+  exists(/databases/$(database)/documents/user_accounts/$(request.auth.uid)) &&
+  get(/databases/$(database)/documents/user_accounts/$(request.auth.uid)).data.isBlocked == false ||
+  request.auth != null &&
+  exists(/databases/$(database)/documents/driver_accounts/$(request.auth.uid))&&
+  get(/databases/$(database)/documents/driver_accounts/$(request.auth.uid)).data.status == 'accepted'
+  ; // Allow authenticated users to list documents
+
+ allow read: if request.auth != null && (
+  // User can always read their own document if it exists and is not blocked
+  request.auth.uid == resource.data.uid ||
+  
+  
+  // Admins can read any user account
+  exists(/databases/$(database)/documents/admin_accounts/$(request.auth.uid))
+  && get(/databases/$(database)/documents/admin_accounts/$(request.auth.uid)).data.status == 'accepted'
+);
+  // Allow create for newly authenticated users to create their document
+   allow create: if request.auth != null &&
+  request.resource.data.keys().hasOnly(['uid', 'name', 'email', 'phoneNumber', 'createdAt', 'status']) &&
+  request.resource.data.uid == request.auth.uid &&
+  request.resource.data.status == "pending" && // Ensure new accounts are not blocked by default
+  request.resource.data.name is string &&
+  request.resource.data.email is string &&
+  request.resource.data.phoneNumber is string &&
+  request.resource.data.createdAt is timestamp;
+
+    
+     allow write: if request.auth != null && (
+
+    // Admins can write to any document
+    exists(/databases/$(database)/documents/admin_accounts/$(request.auth.uid))
+    && get(/databases/$(database)/documents/admin_accounts/$(request.auth.uid)).data.status == 'accepted'
+  );
+  
+   allow update: if request.auth != null && (
+  
+    // Allow updating only specific fields in existing documents by the authenticated user
+    (request.auth.uid == resource.data.uid && request.auth.uid == resource.data.uid &&
+      !request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny(['uid', 'createdAt', 'status'])) ||
+
+    // Admins can write to any document
+    exists(/databases/$(database)/documents/admin_accounts/$(request.auth.uid))
+    && get(/databases/$(database)/documents/admin_accounts/$(request.auth.uid)).data.status == 'accepted'
+  );
+    
+}
+
+
+    
+  match /driver_accounts/{document=**} {
+  
+  // Allow create for newly authenticated users to create their document
+  allow create: if request.auth != null &&
+    request.resource.data.keys().hasOnly(['uid', 'name', 'email', 'phoneNumber', 'createdAt', 'status']) &&
+    request.resource.data.uid == request.auth.uid &&
+    request.resource.data.uid is string &&
+    request.resource.data.name is string &&
+    request.resource.data.email is string &&
+    request.resource.data.phoneNumber is string &&
+    request.resource.data.status is string &&
+    request.resource.data.createdAt is timestamp;
+  
+  allow read: if  request.auth != null &&
+  exists(/databases/$(database)/documents/user_accounts/$(request.auth.uid)) &&
+  get(/databases/$(database)/documents/user_accounts/$(request.auth.uid)).data.isBlocked == false
+  ||
+  
+  
+  request.auth != null && 
+  exists(/databases/$(database)/documents/restaurants_accounts/$(request.auth.uid)) &&
+  get(/databases/$(database)/documents/restaurants_accounts/$(request.auth.uid)).data.status == 'approved'
+  
+   
+  ||request.auth != null && request.auth.uid == resource.data.uid 
+  ||
+  
+   exists(/databases/$(database)/documents/admin_accounts/$(request.auth.uid))
+   && get(/databases/$(database)/documents/admin_accounts/$(request.auth.uid)).data.status == 'accepted';
+   
+  // Allow only authenticated users to read
+
+  allow write: if true || request.auth != null && (
+
+    // Admins can write to any document
+    exists(/databases/$(database)/documents/admin_accounts/$(request.auth.uid))
+    && get(/databases/$(database)/documents/admin_accounts/$(request.auth.uid)).data.status == 'accepted'
+  );
+  
+   allow update: if request.auth != null && (
+  
+    // Allow updating only specific fields in existing documents by the authenticated user
+    (request.auth.uid == resource.data.uid && request.auth.uid == resource.data.uid &&
+    get(/databases/$(database)/documents/driver_accounts/$(request.auth.uid)).data.status == 'accepted' &&
+      !request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny(['uid', 'status'])) ||
+
+    // Admins can write to any document
+    exists(/databases/$(database)/documents/admin_accounts/$(request.auth.uid))
+    && get(/databases/$(database)/documents/admin_accounts/$(request.auth.uid)).data.status == 'accepted'
+  );
+}
+    
+  match /admin_accounts/{document=**} {
+  
+  // Allow create for newly authenticated users to create their document
+  allow create: if request.auth != null &&
+    request.resource.data.keys().hasOnly(['uid', 'name', 'email', 'phoneNumber', 'createdAt', 'status']) &&
+    request.resource.data.uid == request.auth.uid &&
+    request.resource.data.uid is string &&
+    request.resource.data.name is string &&
+    request.resource.data.email is string &&
+    request.resource.data.phoneNumber is string &&
+    request.resource.data.status is string &&
+    request.resource.data.createdAt is timestamp;
+  
+      allow read: if request.auth != null && (
+
+    // Admins can write to any document
+    exists(/databases/$(database)/documents/admin_accounts/$(request.auth.uid)))
+    && get(/databases/$(database)/documents/admin_accounts/$(request.auth.uid)).data.status == 'accepted';
+    
+      allow write: if request.auth != null && (
+
+    // Admins can write to any document
+    exists(/databases/$(database)/documents/admin_accounts/$(request.auth.uid)))
+    && get(/databases/$(database)/documents/admin_accounts/$(request.auth.uid)).data.status == 'accepted';
+   
+    }
+    
+  match /restaurants/{document=**} {
+  
+      // Read access: 
+      allow read: if request.auth != null &&
+                    (
+                      // User owns the restaurant
+                      request.auth.uid == resource.data.userId ||
+                      // User is approved restaurant account
+                      get(/databases/$(database)/documents/restaurants_accounts/$(request.auth.uid)).data.status == 'approved' ||
+                      // User is not blocked in user accounts
+                      (exists(/databases/$(database)/documents/user_accounts/$(request.auth.uid)) &&
+                        get(/databases/$(database)/documents/user_accounts/$(request.auth.uid)).data.isBlocked == false) ||
+                      // User is an accepted driver
+                      (exists(/databases/$(database)/documents/driver_accounts/$(request.auth.uid)) &&
+                        get(/databases/$(database)/documents/driver_accounts/$(request.auth.uid)).data.status == 'accepted') ||
+                      // Admin has access
+                      exists(/databases/$(database)/documents/admin_accounts/$(request.auth.uid))
+                      && get(/databases/$(database)/documents/admin_accounts/$(request.auth.uid)).data.status == 'accepted'
+                    );
+
+      // Write access: 
+      allow write: if request.auth != null &&
+                     (
+                       // User owns the restaurant or admin access
+                       request.auth.uid == resource.data.userId ||
+                       exists(/databases/$(database)/documents/admin_accounts/$(request.auth.uid))
+                       && get(/databases/$(database)/documents/admin_accounts/$(request.auth.uid)).data.status == 'accepted'
+                     );
+
+      // Create access: 
+      allow create: if request.auth != null && 
+      							exists(/databases/$(database)/documents/restaurants_accounts/$(request.auth.uid))&&
+      							!(get(/databases/$(database)/documents/restaurants_accounts/$(request.auth.uid)).data.status == 'rejected') &&
+                     request.resource.data.keys().hasOnly([
+                       'name', 'address', 'description', 'location', 'logo', 'restaurantPicture', 
+                       'userId', 'commission', 'createdAt'
+                     ]) &&
+                     request.resource.data.name is string &&
+                     request.resource.data.address is string &&
+                     request.resource.data.description is string &&
+                     request.resource.data.location is map &&
+                     request.resource.data.location.latitude is number &&
+                     request.resource.data.location.longitude is number &&
+                     request.resource.data.logo is string &&
+                     request.resource.data.restaurantPicture is string &&
+                     request.resource.data.userId is string &&
+                     request.resource.data.commission is number &&
+                     request.resource.data.createdAt is timestamp;
+	}
+  
+  match /items/{document=**} {
+  
+      // Read access: 
+      allow read: if request.auth != null &&
+                    (
+                      // User owns the item
+                      request.auth.uid == resource.data.userId ||
+                      // User is approved restaurant account
+                      get(/databases/$(database)/documents/restaurants_accounts/$(request.auth.uid)).data.status == 'approved' ||
+                      // User is not blocked in user accounts
+                      (exists(/databases/$(database)/documents/user_accounts/$(request.auth.uid)) &&
+                        get(/databases/$(database)/documents/user_accounts/$(request.auth.uid)).data.isBlocked == false) ||
+                      // User is an accepted driver
+                      (exists(/databases/$(database)/documents/driver_accounts/$(request.auth.uid)) &&
+                        get(/databases/$(database)/documents/driver_accounts/$(request.auth.uid)).data.status == 'accepted') ||
+                      // Admin has access
+                      exists(/databases/$(database)/documents/admin_accounts/$(request.auth.uid))
+                      && get(/databases/$(database)/documents/admin_accounts/$(request.auth.uid)).data.status == 'accepted'
+                    );
+
+      // Write access: 
+      allow write: if request.auth != null &&
+                     (
+                       // User owns the item or admin access
+                       request.auth.uid == resource.data.userId ||
+                       exists(/databases/$(database)/documents/admin_accounts/$(request.auth.uid))
+                       && get(/databases/$(database)/documents/admin_accounts/$(request.auth.uid)).data.status == 'accepted'
+                     );
+
+      // Create access: 
+      allow create: if request.auth != null &&       
+              get(/databases/$(database)/documents/restaurants_accounts/$(request.auth.uid)).data.status == 'approved' &&
+              request.resource.data.keys().hasOnly(['name', 'description', 'price', 'discount', 'picture', 'section', 'userId', 'createdAt', 'hide', 'availability', 'isDeleted']) &&
+              request.resource.data.name is string &&
+              request.resource.data.description is string &&
+              request.resource.data.price is number &&
+              request.resource.data.discount is number &&
+              request.resource.data.picture is string &&
+              request.resource.data.section is string &&
+              request.resource.data.userId is string &&
+              request.resource.data.createdAt is timestamp &&
+              request.resource.data.hide is string &&
+              request.resource.data.availability is string &&
+              request.resource.data.isDeleted is string;
+
+	}
+
+    
+  match /orders/{document=**}  {
+  allow create: if request.auth != null &&
+	get(/databases/$(database)/documents/user_accounts/$(request.auth.uid)).data.isBlocked == false &&
+        request.resource.data.keys().hasAll([
+          'uid', 'restaurantId', 'addressId', 'items', 'totalPrice', 'deliveryFee', 'status', 
+          'driverId', 'driverStatus', 'commissionAmount', 'timestamp', 'name', 'phoneNumber', 'address'
+        ]) &&
+        // Validate that fields are of correct types
+        request.resource.data['uid'] is string &&
+        request.resource.data['restaurantId'] is string &&
+        request.resource.data['addressId'] is string &&
+        request.resource.data['items'] is list &&
+        request.resource.data['items'].size() > 0 &&
+        request.resource.data['totalPrice'] is number &&
+        request.resource.data['deliveryFee'] is number &&
+        request.resource.data['status'] is string &&
+        request.resource.data['driverId'] is string &&
+        request.resource.data['driverStatus'] is string &&
+        request.resource.data['commissionAmount'] is number &&
+        request.resource.data['timestamp'] is timestamp &&
+        request.resource.data['name'] is string &&
+        request.resource.data['phoneNumber'] is string &&
+        request.resource.data['address'] is map &&
+        request.resource.data['address']['addressName'] is string &&
+        request.resource.data['address']['building'] is string &&
+        request.resource.data['address']['city'] is string &&
+        request.resource.data['address']['location'] is map &&
+        request.resource.data['address']['location']['latitude'] is number &&
+        request.resource.data['address']['location']['longitude'] is number &&
+        request.resource.data['address']['street'] is string;
+        
+      allow read: if request.auth != null && 
+      request.auth.uid == resource.data.uid&&
+  		get(/databases/$(database)/documents/user_accounts/$(request.auth.uid)).data.isBlocked == false ||
+      request.auth != null && 
+      request.auth.uid == resource.data.restaurantId &&
+      get(/databases/$(database)/documents/restaurants_accounts/$(request.auth.uid)).data.status == 'approved'
+      ||
+      request.auth != null && 
+      request.auth.uid == resource.data.driverId &&
+      get(/databases/$(database)/documents/driver_accounts/$(request.auth.uid)).data.status == 'accepted'
+      ||
+      exists(/databases/$(database)/documents/admin_accounts/$(request.auth.uid))
+      && get(/databases/$(database)/documents/admin_accounts/$(request.auth.uid)).data.status == 'accepted'
+      allow write: if 
+    	request.auth != null && 
+      request.auth.uid == resource.data.uid&&
+  		get(/databases/$(database)/documents/user_accounts/$(request.auth.uid)).data.isBlocked == false ||
+      request.auth != null && 
+      request.auth.uid == resource.data.restaurantId &&
+      get(/databases/$(database)/documents/restaurants_accounts/$(request.auth.uid)).data.status == 'approved'
+      ||
+      request.auth != null && 
+      request.auth.uid == resource.data.driverId &&
+      get(/databases/$(database)/documents/driver_accounts/$(request.auth.uid)).data.status == 'accepted'
+      ||
+      exists(/databases/$(database)/documents/admin_accounts/$(request.auth.uid))
+      && get(/databases/$(database)/documents/admin_accounts/$(request.auth.uid)).data.status == 'accepted'; 
+      }
+    
+  match /finance/{document=**} {
+      allow read: if request.auth != null;
+    
+      allow write: if request.auth != null && (
+
+    
+    exists(/databases/$(database)/documents/admin_accounts/$(request.auth.uid)))
+    && get(/databases/$(database)/documents/admin_accounts/$(request.auth.uid)).data.status == 'accepted';
+   
+    }
+    
+  match /addresses/{addressId} {
+    allow read, update, delete: if request.auth != null && 
+      request.auth.uid == resource.data.userId 
+      && get(/databases/$(database)/documents/user_accounts/$(request.auth.uid)).data.isBlocked == false 
+      ||
+      exists(/databases/$(database)/documents/admin_accounts/$(request.auth.uid))
+      && get(/databases/$(database)/documents/admin_accounts/$(request.auth.uid)).data.status == 'accepted'; 
+    allow create: if request.auth != null && 
+      request.auth.uid == request.resource.data.userId
+      &&get(/databases/$(database)/documents/user_accounts/$(request.auth.uid)).data.isBlocked == false 
+      ||
+      exists(/databases/$(database)/documents/admin_accounts/$(request.auth.uid))
+      && get(/databases/$(database)/documents/admin_accounts/$(request.auth.uid)).data.status == 'accepted'; 
+  	allow write: if request.auth != null && 
+      request.auth.uid == request.resource.data.userId &&
+      get(/databases/$(database)/documents/user_accounts/$(request.auth.uid)).data.isBlocked == false 
+      ||
+      exists(/databases/$(database)/documents/admin_accounts/$(request.auth.uid))
+      && get(/databases/$(database)/documents/admin_accounts/$(request.auth.uid)).data.status == 'accepted'; 
+      
+  	
+    }
+    
+    match /support/{document=**} {
+      allow write: if 
+      
+      request.auth != null && 
+  		get(/databases/$(database)/documents/user_accounts/$(request.auth.uid)).data.isBlocked == false 
+      ||
+      request.auth != null && 
+      get(/databases/$(database)/documents/restaurants_accounts/$(request.auth.uid)).data.status == 'approved'
+      ||
+      request.auth != null && 
+      get(/databases/$(database)/documents/driver_accounts/$(request.auth.uid)).data.status == 'accepted'
+      ||
+      exists(/databases/$(database)/documents/admin_accounts/$(request.auth.uid))
+      && get(/databases/$(database)/documents/admin_accounts/$(request.auth.uid)).data.status == 'accepted'
+      
+      allow read: if request.auth != null && exists(/databases/$(database)/documents/admin_accounts/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/admin_accounts/$(request.auth.uid)).data.status == 'accepted'; 
+    }
+    
+    
+    
+
+    
+  }
+}
